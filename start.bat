@@ -9,6 +9,19 @@ set CLEAR_MODE=false
 if "%1"=="--clear" set CLEAR_MODE=true
 if "%1"=="-c" set CLEAR_MODE=true
 
+REM Check for --no-update argument
+set UPDATE_MODE=false
+if "%1"=="--no-update" set UPDATE_MODE=false
+if "%2"=="--no-update" set UPDATE_MODE=false
+
+REM Check for AUTO_UPDATE in .env (for production)
+if exist .env (
+    findstr /C:"AUTO_UPDATE=true" .env >nul
+    if not errorlevel 1 (
+        set UPDATE_MODE=true
+    )
+)
+
 REM Check if Python is installed
 python --version >nul 2>&1
 if errorlevel 1 (
@@ -18,7 +31,39 @@ if errorlevel 1 (
     exit /b 1
 )
 
-echo [1/5] Checking virtual environment...
+REM Check if git is available and update code
+if "%UPDATE_MODE%"=="true" (
+    echo [1/6] Checking for updates from Git...
+    git --version >nul 2>&1
+    if not errorlevel 1 (
+        echo Pulling latest changes from repository...
+        git pull origin main
+        if errorlevel 1 (
+            echo [WARNING] Failed to pull updates, continuing with local version...
+        ) else (
+            echo Code updated successfully!
+        )
+    ) else (
+        echo Git not found, skipping auto-update...
+    )
+    echo.
+) else (
+    echo [INFO] Auto-update skipped
+    echo.
+)
+
+echo [2/6] Checking virtual environment...
+if not exist "venv\Scripts\activate.bat" (
+    echo Virtual environment not found. Creating...
+    python -m venv venv
+    if errorlevel 1 (
+        echo [ERROR] Failed to create virtual environment
+        pause
+        exit /b 1
+    )
+    echo Virtual environment created successfully!
+) else (
+echo [2/6] Checking virtual environment...
 if not exist "venv\Scripts\activate.bat" (
     echo Virtual environment not found. Creating...
     python -m venv venv
@@ -33,7 +78,7 @@ if not exist "venv\Scripts\activate.bat" (
 )
 
 echo.
-echo [2/5] Activating virtual environment...
+echo [3/6] Activating virtual environment...
 call venv\Scripts\activate.bat
 if errorlevel 1 (
     echo [ERROR] Failed to activate virtual environment
@@ -42,7 +87,7 @@ if errorlevel 1 (
 )
 
 echo.
-echo [3/5] Checking and installing dependencies...
+echo [4/6] Checking and installing dependencies...
 echo Verifying all requirements are installed...
 pip install -r requirements.txt --quiet
 if errorlevel 1 (
@@ -53,7 +98,7 @@ if errorlevel 1 (
 echo All dependencies are installed!
 
 echo.
-echo [4/5] Checking for .env file...
+echo [5/6] Checking for .env file...
 if not exist .env (
     echo .env file not found. Creating from template...
     copy .env.example .env
@@ -76,7 +121,7 @@ if not errorlevel 1 (
 )
 
 echo.
-echo [5/5] Starting bot...
+echo [6/6] Starting bot...
 echo.
 
 REM Set CLEAR_COMMANDS in .env if --clear was used
