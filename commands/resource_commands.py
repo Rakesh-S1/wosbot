@@ -1,5 +1,6 @@
 import sqlite3
 from typing import Optional
+import re
 
 import discord
 from discord import app_commands
@@ -26,6 +27,23 @@ def format_num(n: Optional[int]) -> str:
             return f"{n}{unit}"
         n = n // 1000
     return str(n)
+
+
+def parse_level(level_str):
+    """Parse level string and return (main_level, sublevel) tuple"""
+    level_str = str(level_str).strip()
+    
+    # Remove "FC" or "Level" prefix if present
+    level_str = re.sub(r'^(?:FC|Level)\s*', '', level_str, flags=re.I)
+    
+    # Match patterns: "3", "3.1", "3-1", "3 1"
+    match = re.match(r'^(\d+)(?:[.\s-](\d+))?$', level_str)
+    if not match:
+        return None, None
+    
+    main_level = int(match.group(1))
+    sublevel = int(match.group(2)) if match.group(2) else None
+    return main_level, sublevel
 
 
 async def setup_resource_commands(bot: discord.Client):
@@ -88,7 +106,8 @@ async def setup_resource_commands(bot: discord.Client):
             if current:
                 levels = [lvl for lvl in levels if str(lvl).startswith(current)]
             
-            result = [app_commands.Choice(name=str(lvl), value=lvl) for lvl in levels[:25]]
+            # Return string values instead of integers
+            result = [app_commands.Choice(name=str(lvl), value=str(lvl)) for lvl in levels[:25]]
             print(f"  -> Returning {len(result)} level choices")
             return result
         except Exception as e:
@@ -121,13 +140,20 @@ async def setup_resource_commands(bot: discord.Client):
             
             # Filter to show only levels >= from_level if from_level is set
             if from_level:
-                levels = [lvl for lvl in levels if lvl >= from_level]
+                try:
+                    # Parse from_level to get the main level
+                    from_main, from_sub = parse_level(from_level)
+                    if from_main is not None:
+                        levels = [lvl for lvl in levels if lvl >= from_main]
+                except:
+                    pass  # If parsing fails, show all levels
             
             # Filter based on user input
             if current:
                 levels = [lvl for lvl in levels if str(lvl).startswith(current)]
             
-            result = [app_commands.Choice(name=str(lvl), value=lvl) for lvl in levels[:25]]
+            # Return string values instead of integers
+            result = [app_commands.Choice(name=str(lvl), value=str(lvl)) for lvl in levels[:25]]
             print(f"  -> Returning {len(result)} level choices")
             return result
         except Exception as e:
@@ -139,20 +165,32 @@ async def setup_resource_commands(bot: discord.Client):
     @bot.tree.command(name="buildingcost", description="Calculate building upgrade costs (including War Academy)")
     @app_commands.describe(
         building="Building slug (e.g., furnace, infantry-camp, war-academy)",
-        from_level="Start level (inclusive)",
-        to_level="End level (inclusive)"
+        from_level="Start level (e.g., 3 or 3.1)",
+        to_level="End level (e.g., 4 or 4.2)"
     )
     @app_commands.autocomplete(
         building=building_autocomplete,
         from_level=from_level_autocomplete,
         to_level=to_level_autocomplete
     )
-    async def buildingcost(interaction: discord.Interaction, building: str, from_level: int, to_level: int):
+    async def buildingcost(interaction: discord.Interaction, building: str, from_level: str, to_level: str):
         """Calculate total resources and time to upgrade a building between levels."""
         await interaction.response.defer()
         
-        if from_level < 1 or to_level < from_level:
+        # Parse level strings (support formats like "3", "3.1", "3-1", "FC 3.1")
+        from_main, from_sub = parse_level(from_level)
+        to_main, to_sub = parse_level(to_level)
+        
+        if from_main is None or to_main is None:
+            await interaction.followup.send("❌ Invalid level format. Use formats like: 3, 3.1, 3-1")
+            return
+        
+        if from_main < 1 or to_main < from_main:
             await interaction.followup.send("❌ Invalid level range. Ensure 1 <= from_level <= to_level")
+            return
+        
+        if from_main == to_main and from_sub is not None and to_sub is not None and to_sub < from_sub:
+            await interaction.followup.send("❌ Invalid sublevel range within the same main level")
             return
 
         conn = sqlite3.connect(DB_PATH)
@@ -166,15 +204,14 @@ async def setup_resource_commands(bot: discord.Client):
             
         building_id, name = row
         
-        # For FC buildings, we need special handling:
-        # From level X to level Y means: all X sublevels + main Y level (but not Y sublevels)
-        # We query levels where level_int is in range, then filter out sublevels of to_level
+        # Query all levels in the range
         cur.execute("""
             SELECT level_text, meat, wood, coal, iron, steel, fire_crystals, fire_crystal_shards, refined_fire_crystals, time_seconds 
             FROM levels 
             WHERE building_id = ? AND level_int >= ? AND level_int <= ?
             ORDER BY id
-        """, (building_id, from_level, to_level))
+        """, (building_id, from_main, to_main))
+        
         totals = {
             'meat': 0,
             'wood': 0,
@@ -186,29 +223,48 @@ async def setup_resource_commands(bot: discord.Client):
             'refined_fire_crystals': 0,
             'time_seconds': 0,
         }
+        
         found = False
         for r in cur.fetchall():
             level_text, meat, wood, coal, iron, steel, fire_crystals, fire_crystal_shards, refined_fire_crystals, time_seconds = r
             
-            # Parse level to determine if it's a main level or sublevel
+            # Parse the level_text to determine main level and sublevel
             import re
-            # Match patterns like "FC 6", "FC 6.1", "FC 6-1", "6", "6.1", "Level 6", etc.
-            level_match = re.match(r'^(?:FC\s*|Level\s*)?(\d+)([.\s-]\d+)?', level_text, re.I)
+            level_match = re.match(r'^(?:FC\s*|Level\s*)?(\d+)([.\s-](\d+))?', level_text, re.I)
             if not level_match:
                 continue
             
-            main_level = int(level_match.group(1))
-            is_sublevel = level_match.group(2) is not None  # Has .1, -1, etc.
+            current_main = int(level_match.group(1))
+            current_sub = int(level_match.group(3)) if level_match.group(3) else None
             
-            # Logic: from=6 means "I'm AT 6, start from 6.1"
-            # So skip the main from_level itself (e.g., skip "FC 6")
-            if main_level == from_level and not is_sublevel:
-                continue
+            # Apply filtering based on from_level and to_level
+            # Skip if before from_level
+            if current_main == from_main:
+                if from_sub is not None:
+                    # User specified from sublevel (e.g., 3.2) - means user is AT 3.2
+                    if current_sub is None:
+                        # Skip main level 3 if user is at 3.2
+                        continue
+                    elif current_sub <= from_sub:
+                        # Skip the current sublevel and all sublevels before it
+                        continue
+                else:
+                    # User specified just main level (e.g., 3) - skip the main level itself
+                    if current_sub is None:
+                        continue
             
-            # Logic: to=7 means "stop at main level 7"
-            # So skip sublevels of to_level (e.g., skip "FC 7.1, 7.2, etc.")
-            if main_level == to_level and is_sublevel:
-                continue
+            # Skip if after to_level
+            if current_main == to_main:
+                if to_sub is not None:
+                    # User specified to sublevel (e.g., 4.2)
+                    if current_sub is not None and current_sub > to_sub:
+                        # Skip sublevels after the specified one
+                        continue
+                else:
+                    # User specified just main level (e.g., 4)
+                    # Include main level but skip its sublevels
+                    if current_sub is not None:
+                        continue
             
             found = True
             totals['meat'] += meat or 0
