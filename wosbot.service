@@ -1,0 +1,21 @@
+[Unit]
+Description=Wosland Discord Bot
+After=network.target
+
+[Service]
+Type=simple
+User=your_username
+WorkingDirectory=/path/to/wosbot
+ExecStart=/path/to/wosbot/venv/bin/python3 /path/to/wosbot/bot.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/path/to/wosbot/logs/bot.log
+StandardError=append:/path/to/wosbot/logs/bot-error.log
+
+# Environment variables (or use EnvironmentFile)
+# Environment="DISCORD_TOKEN=your_token_here"
+# Or load from .env file:
+EnvironmentFile=/path/to/wosbot/.env
+
+[Install]
+WantedBy=multi-user.target
