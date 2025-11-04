@@ -1,0 +1,37 @@
+"""
+WOS Bot - Complete Command List
+================================
+
+CURRENT AVAILABLE COMMANDS:
+"""
+
+# Age Commands
+✅ /age - Calculate exact server age from VIP login streak
+✅ /state - Get instant timeline for any state number
+
+# Server Tracking Commands
+✅ /addserver - Add a server for automatic tracking
+✅ /server - View current age of a tracked server
+✅ /listservers - List all tracked servers
+✅ /updateserver - Update server reference
+✅ /deleteserver - Remove a server from tracking
+
+# Resource Calculator Commands
+✅ /buildingcost - Calculate building upgrade costs
+   - Usage: /buildingcost building:furnace from_level:1 to_level:30
+   - Supports ALL buildings from database (25 buildings, 793 levels)
+   - Includes Fire Crystal buildings and War Academy
+   - Shows: Meat, Wood, Coal, Iron, Steel, FC Shards, Refined FC, Time
+
+# Help Command
+✅ /help - Show all available commands
+
+TOTAL COMMANDS: 9
+
+DATABASE:
+- servers.db - Server tracking data
+- data/buildings.db - Building costs, prerequisites, resources (25 buildings, 793 levels)
+
+DATA SOURCES:
+- WhiteoutSurvival.wiki (official) - Buildings, War Academy, Fire Crystal data
+- Manual calculations - Server age timeline formulas
