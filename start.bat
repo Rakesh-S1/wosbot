@@ -63,17 +63,6 @@ if not exist "venv\Scripts\activate.bat" (
     )
     echo Virtual environment created successfully!
 ) else (
-echo [2/6] Checking virtual environment...
-if not exist "venv\Scripts\activate.bat" (
-    echo Virtual environment not found. Creating...
-    python -m venv venv
-    if errorlevel 1 (
-        echo [ERROR] Failed to create virtual environment
-        pause
-        exit /b 1
-    )
-    echo Virtual environment created successfully!
-) else (
     echo Virtual environment found!
 )
 
