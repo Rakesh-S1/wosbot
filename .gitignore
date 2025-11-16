@@ -23,3 +23,10 @@ data/*.json
 .idea/
 *.swp
 *.swo
+
+test
+
+start.bat
+start.sh
+docs
+debug_buildings_index.html
